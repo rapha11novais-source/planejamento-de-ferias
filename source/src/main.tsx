@@ -1,21 +1,62 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { LockKeyhole, LoaderCircle } from 'lucide-react';
+import { LoaderCircle } from 'lucide-react';
 import RSVP from './rsvp';
 import Admin from './panel';
-import { ADMIN_EMAIL, configured, supabase, SUPABASE_URL } from './api';
+import AdminAccess from './admin-access';
+import { ADMIN_EMAIL, configured, supabase } from './api';
 import './globals.css';
-function App(){
-  const [admin,setAdmin]=useState(location.hash==='#admin'||location.hash.includes('access_token=')||new URLSearchParams(location.search).has('code')),[email,setEmail]=useState<string|null>(null),[loading,setLoading]=useState(admin),[busy,setBusy]=useState(false),[message,setMessage]=useState(''),[error,setError]=useState(''),[verification,setVerification]=useState('');
-  useEffect(()=>{const changed=()=>setAdmin(location.hash==='#admin');window.addEventListener('hashchange',changed);return()=>window.removeEventListener('hashchange',changed);},[]);
-  useEffect(()=>{if(!supabase)return;let alive=true;const update=async()=>{const {data:{user}}=await supabase!.auth.getUser();if(alive){setEmail(user?.email?.toLowerCase()===ADMIN_EMAIL?user.email:null);setLoading(false);}};void update();const {data:{subscription}}=supabase.auth.onAuthStateChange(()=>{setTimeout(()=>void update(),0);});return()=>{alive=false;subscription.unsubscribe();};},[]);
-  async function login(){if(!supabase)return;setBusy(true);setError('');try{const {error}=await supabase.auth.signInWithOtp({email:ADMIN_EMAIL,options:{shouldCreateUser:true,emailRedirectTo:`${location.origin}${location.pathname}#admin`}});if(error)throw error;setMessage('Verifique seu e-mail. Você pode abrir o link ou copiar o endereço do botão recebido e colá-lo abaixo para confirmar o acesso.');}catch(e){setError(e instanceof Error?e.message:'Não foi possível enviar o link de acesso.');}finally{setBusy(false);}}
-  async function verify(){if(!supabase)return;setBusy(true);setError('');try{let result;const value=verification.trim();if(/^\d{6,10}$/.test(value)){result=await supabase.auth.verifyOtp({email:ADMIN_EMAIL,token:value,type:'email'});}else{const link=new URL(value);if(link.origin!==new URL(SUPABASE_URL).origin)throw new Error('Cole o link de acesso recebido no seu e-mail.');const token=link.searchParams.get('token_hash')||link.searchParams.get('token');const type=link.searchParams.get('type');if(!token||!['magiclink','signup','email'].includes(type||''))throw new Error('Link de acesso inválido. Solicite um novo link.');result=await supabase.auth.verifyOtp({token_hash:token,type:type as 'magiclink'|'signup'|'email'});}if(result.error)throw result.error;if(result.data.user?.email?.toLowerCase()!==ADMIN_EMAIL){await supabase.auth.signOut();throw new Error('Este painel é exclusivo do organizador autorizado.');}setEmail(result.data.user.email);setVerification('');}catch(e){setError(e instanceof Error?e.message:'Link inválido ou expirado. Solicite um novo link.');}finally{setBusy(false);}}
-  if(!configured)return <main className="denied"><h1>Configuração em andamento</h1><p>O formulário será liberado assim que a organização concluir a conexão com o banco de dados.</p></main>;
-  if(!admin)return <RSVP/>;
-  if(loading)return <div className="loading"><LoaderCircle className="spin"/>Verificando acesso…</div>;
-  if(email)return <Admin email={email}/>;
-  return <main className="denied"><LockKeyhole size={34}/><h1>Área dos organizadores</h1><p>Este painel é exclusivo de <strong>{ADMIN_EMAIL}</strong>. Confirme seu acesso pelo link enviado ao seu e-mail.</p>{message&&<><div className="info-box" role="status">{message}</div><form onSubmit={e=>{e.preventDefault();void verify();}}><label className="field" style={{marginTop:20}}>Código ou link recebido no e-mail<input autoComplete="one-time-code" required value={verification} onChange={e=>setVerification(e.target.value)} placeholder="Cole o link ou digite o código"/></label><button className="primary" disabled={busy}>Confirmar acesso</button></form></>}{error&&<div className="error" role="alert">{error}</div>}<button className={message?'text-button':'primary'} disabled={busy} onClick={()=>void login()}>{busy?'Aguarde…':message?'Enviar novo link':'Receber link de acesso'}</button><p><a href="./">Voltar ao formulário</a></p></main>;
+
+const authReturn = location.hash.includes('access_token=') || new URLSearchParams(location.search).has('code');
+const recoveryReturn = ['recovery','signup','magiclink','email'].includes(new URLSearchParams(location.hash.slice(1)).get('type') || '');
+
+function App() {
+  const [admin, setAdmin] = useState(location.hash === '#admin' || authReturn);
+  const [email, setEmail] = useState<string | null>(null);
+  const [loading, setLoading] = useState(admin);
+  const [recovery, setRecovery] = useState(recoveryReturn);
+
+  useEffect(() => {
+    const changed = () => setAdmin(location.hash === '#admin' || location.hash.includes('access_token='));
+    window.addEventListener('hashchange', changed);
+    return () => window.removeEventListener('hashchange', changed);
+  }, []);
+
+  useEffect(() => {
+    if (!supabase) return;
+    let alive = true;
+    const update = async () => {
+      const { data: { user } } = await supabase!.auth.getUser();
+      if (!alive) return;
+      setEmail(user?.email?.toLowerCase() === ADMIN_EMAIL ? user.email : null);
+      setLoading(false);
+    };
+    void update();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(event => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setRecovery(true);
+        setAdmin(true);
+        window.history.replaceState(null, '', `${location.pathname}#admin`);
+      }
+      if (event === 'SIGNED_OUT') setRecovery(false);
+      // Defer Auth API calls until the auth event callback has released its lock.
+      setTimeout(() => void update(), 0);
+    });
+    return () => { alive = false; subscription.unsubscribe(); };
+  }, []);
+
+  if (!configured) return <main className="denied"><h1>Configuração em andamento</h1><p>O formulário será liberado assim que a organização concluir a conexão com o banco de dados.</p></main>;
+  if (!admin) return <RSVP />;
+  if (loading) return <div className="loading" role="status"><LoaderCircle className="spin" />Verificando acesso…</div>;
+  if (email && !recovery) return <Admin email={email} />;
+  return <AdminAccess
+    verifiedEmail={email}
+    recovering={recovery}
+    onSignedIn={setEmail}
+    onRecoveryVerified={owner => { setEmail(owner); setRecovery(true); }}
+    onPasswordSaved={() => setRecovery(false)}
+  />;
 }
-createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);
+
+createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></React.StrictMode>);
 

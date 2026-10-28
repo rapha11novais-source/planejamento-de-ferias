@@ -1,36 +1,34 @@
-# Confirmação de presença · 4º Pelotão
+# Preferências de férias de 2027 · 4º Pelotão
 
-26/10/2026 · Clube LED · Cordeiros-BA.
+Formulário público, sem login para os policiais: nome completo, matrícula e três meses distintos, em ordem de preferência. A indicação não garante a concessão das férias nos períodos solicitados. Não há prazo de encerramento configurado.
 
-O formulário é público, sem login para os policiais. O painel é exclusivo de `rapha11novais@gmail.com`, autenticado pelo Supabase. Matrícula única, edição por link pessoal com token aleatório, nomes de todos os convidados obrigatórios, Excel com três abas e PDF com paginação. Não existe prazo de encerramento.
+Uma resposta por matrícula. Após o envio, o policial recebe um link pessoal para consultar e atualizar sua própria resposta. O painel dos organizadores apresenta a relação nominal, filtros por mês e ordem de preferência, procura mensal e exportações Excel/PDF.
 
-## Configuração do Supabase
+## Supabase
 
-1. Aplicar `supabase/migrations/202610080001_confirmations.sql` ao projeto escolhido. A migração cria somente a tabela `rsvp_4p_2026` e as funções `rsvp_4p_load` e `rsvp_4p_save`, sem alterar dados de formulários antigos.
-2. Configurar `public/config.js` com a URL do projeto e a chave **publishable** (ou anon). Nunca colocar `service_role`, chave secreta, senha de banco ou token administrativo neste arquivo ou no GitHub.
-3. Habilitar o provedor de e-mail no Supabase Auth. O primeiro acesso verifica o e-mail `rapha11novais@gmail.com` e permite criar essa conta pelo Supabase Auth. Somente esse e-mail tem acesso aos dados por RLS.
-4. Em Authentication → URL Configuration, incluir a URL exata publicada pelo GitHub Pages (com a barra final) como Site URL e Redirect URL. O painel é acessado em `#admin`. Também é possível copiar o link de confirmação recebido e colá-lo no painel; a aplicação verifica diretamente o token com o Supabase, mesmo sem redirecionamento configurado.
-5. Verificar as políticas: `anon` não tem acesso direto à tabela; `authenticated` só tem leitura das colunas do relatório, condicionada ao e-mail do organizador. A tabela não permite INSERT, UPDATE ou DELETE diretos por esses papéis.
+1. Aplicar `supabase/migrations/20261028164537_vacation_preferences_2027.sql`. Cria somente a tabela `vacation_4p_2027`, o esquema interno `vacation_4p_internal` e as funções `vacation_4p_load` e `vacation_4p_save`. A migração da confraternização permanece no histórico; os registros antigos não são convertidos ou apagados.
+2. Configurar `public/config.js` com a URL e a chave pública **publishable** do projeto. Nunca publicar service_role, senhas, chaves secretas ou tokens pessoais.
+3. Habilitar o provedor de e-mail no Supabase Auth. O painel é exclusivo de `rapha11novais@gmail.com`, por autenticação e política RLS no banco.
+4. No primeiro acesso em `#admin`, escolher **Definir ou recuperar senha**, verificar o e-mail e definir uma senha de pelo menos 12 caracteres. Os acessos seguintes usam e-mail e senha. O próprio usuário solicita o e-mail de confirmação; nenhuma senha é incluída no código.
+5. Em Authentication → URL Configuration, incluir a URL exata do GitHub Pages, com a barra final, como Site URL e Redirect URL. Alternativamente, copiar o link de confirmação do e-mail e colá-lo no painel para verificá-lo diretamente com o Supabase.
 
-As funções públicas permitem apenas criar uma resposta e consultar/editar a resposta correspondente a um token pessoal de 256 bits. O banco guarda somente o SHA-256 do token. Matrícula, presença, nomes, quantidade e versão são validados também no servidor. Atualizações com versão antiga são recusadas.
+Os papéis públicos não podem ler ou modificar diretamente a tabela. O organizador autenticado lê apenas as colunas de relatório, sem o hash dos tokens. As funções públicas permitem criar uma resposta ou consultar/editar a resposta correspondente ao token pessoal de 256 bits; o banco armazena somente seu SHA-256. Nome, matrícula, meses, distinção entre opções e versão são validados no servidor. A matrícula é imutável na atualização, e alterações com versão desatualizada são recusadas.
 
-## Build e GitHub Pages
+## Build e publicação
 
 ```sh
 npm ci
 npm run build
 ```
 
-O resultado está em `dist/`. Todos os caminhos são relativos para funcionar no subdiretório do repositório. Para o Pages já existente com publicação pela raiz de `main`, publicar o conteúdo de `dist/` na raiz, mantendo também este projeto em `source/`. Não incluir dados reais nem tokens de edição no repositório.
+Publicar o conteúdo de `dist/` na raiz de `main`, conforme a configuração existente do GitHub Pages, mantendo o projeto editável em `source/` e `.nojekyll` na raiz. Os caminhos relativos permitem o funcionamento no subdiretório do repositório. Não incluir respostas reais ou links pessoais no GitHub.
 
-## Verificação antes da liberação
+## Validação
 
-- Submissão com e sem convidados e ausência.
-- Recusa de convidados sem nomes, duplicidade de matrícula e atualização com versão antiga.
-- Link pessoal em outro dispositivo recupera somente sua própria resposta.
-- Chave pública sem login não consulta o relatório nem a tabela.
-- Conta autenticada diferente da conta do organizador não lê dados.
-- Conta autorizada vê totais, filtros e exporta Excel/PDF.
+- Nome, matrícula e três opções obrigatórias; meses repetidos recusados na interface e no banco.
+- Matrícula duplicada, token incorreto e versão desatualizada recusados.
+- Anônimo sem acesso à tabela; outro e-mail autenticado sem leitura do relatório.
+- Resumo mantém a ordem das opções e exibe a ressalva sobre disponibilidade e necessidade do serviço.
+- Layout responsivo e exportações com matrículas preservadas como texto, incluindo zeros iniciais.
 
-Os arquivos estáticos do GitHub Pages são públicos; a exclusividade dos dados é imposta pelo Supabase Auth e pelo PostgreSQL, conforme solicitado para o painel administrativo.
-
+Os arquivos estáticos são públicos; a exclusividade dos dados administrativos é imposta pelo Supabase Auth e pelo PostgreSQL.
